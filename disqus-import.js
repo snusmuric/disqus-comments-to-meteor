@@ -11,6 +11,7 @@ const PATH_TO_DISQUS_COMMENTS_XML = config.path_to_disqus_comments_xml
 const COLLECTION_DISQUS_THREADS = config.collection_disqus_threads
 const COLLECTION_DISQUS_POSTS = config.collection_disqus_posts
 const MAX_CHUNK_SIZE = config.max_chunk_size
+const THREAD_LINKS_FILTER = config.thread_links_filter || []
 const url = `mongodb://${MONGODB_HOST}:${MONGODB_PORT}`
 
 const client = new MongoClient(url, { useUnifiedTopology: true })
@@ -108,7 +109,7 @@ async function persistRecord({ db, collectionName, xml, chunksBuffer }) {
     await db.collection(collectionName)
       .bulkWrite(
         chunksBuffer.map(doc => (
-            { updateOne: { filter: {_id: doc._id}, update: doc, upsert: true } }
+            { updateOne: { filter: { _id: doc._id }, update: doc, upsert: true } }
           )
         )
       )
@@ -142,14 +143,80 @@ async function isCollectionExist(db, collectionName) {
   return collections.map(c => c.name).includes(collectionName)
 }
 
+async function findReplies(db, threadId, parentPostId) {
+  const condition = {
+    $and: [
+      {
+        thread: threadId
+      },
+    ]
+  }
+  if (parentPostId === null) {
+    condition.$and.push(
+      { $or: [{ parent: { $exists: true, $eq: null } }, { parent: { $exists: false } }] }
+    )
+  } else {
+    condition.$and.push(
+      { parent: { $exists: true, $eq: parentPostId } }
+    )
+  }
+  const countOfReplies = await db.collection(COLLECTION_DISQUS_POSTS)
+    .find(condition)
+    .count()
+  if (countOfReplies === 0) {
+    return []
+  }
+  let replies = []
+  const postsCursor = await db.collection(COLLECTION_DISQUS_POSTS)
+    .find(condition)
+    .sort({ createdAt: -1 })
+  for await(const post of postsCursor) {
+    if (post.isSpam || post.isDeleted) {
+      continue
+    }
+    post.replies = [...await findReplies(db, threadId, post._id)]
+    replies.push(post)
+  }
+  return replies
+}
+
+async function convertToCommentsUiComments(db) {
+  console.log('Converting Disqus threads/posts to comments-ui...')
+  const start = new Date().getTime()
+  const condition = {}
+  if (config.thread_links_regex && config.thread_links_regex.length > 0) {
+    condition.$or = [
+      ...config.thread_links_regex.map(regExpr => (
+        { link: { $regex: new RegExp(regExpr) } })
+      )
+    ]
+  }
+  const threads = db.collection(COLLECTION_DISQUS_THREADS)
+    .find(condition)
+    .sort({ createdAt: -1 })
+  for await(const thread of threads) {
+    if (thread.isSpam || thread.isDeleted) {
+      continue
+    }
+    thread.replies = [
+      ...(await findReplies(db, thread._id, null)) || []
+    ]
+    console.log(JSON.stringify(thread) + ',')
+  }
+  console.log(`Converting Disqus to comments-ui finished. Time spent ms: ${new Date().getTime() - start}`)
+}
+
 async function startImport() {
   try {
     await client.connect()
     console.log("Connected successfully to server")
     const db = client.db(MONGODB_DB_NAME)
-    await createTempCollections(db)
-    await importDisqusItems(db, COLLECTION_DISQUS_THREADS, 'thread', transformThreadNode)
-    await importDisqusItems(db, COLLECTION_DISQUS_POSTS, 'post', transformPostNode)
+    // await createTempCollections(db)
+    // await importDisqusItems(db, COLLECTION_DISQUS_THREADS, 'thread', transformThreadNode)
+    // await importDisqusItems(db, COLLECTION_DISQUS_POSTS, 'post', transformPostNode)
+    await convertToCommentsUiComments(db)
+    // const replies = await findReplies(db, "7511555903", null)
+    // console.log(JSON.stringify(replies))
   } catch (err) {
     console.error(err)
   } finally {

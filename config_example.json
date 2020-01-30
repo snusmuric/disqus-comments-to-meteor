@@ -6,8 +6,7 @@
   "collection_disqus_threads": "temp_disqus_threads",
   "collection_disqus_posts": "temp_disqus_posts",
   "max_chunk_size": 100,
-  "thread_links_filter": [
-    "http://example.com/param1?",
-    "http://example2.com/param/"
+  "thread_links_regex": [
+    "example.com\\/param1\\?"
   ]
 }
