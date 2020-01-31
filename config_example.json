@@ -5,6 +5,7 @@
   "path_to_disqus_comments_xml": "./disqus-comments-all.xml",
   "collection_disqus_threads": "temp_disqus_threads",
   "collection_disqus_posts": "temp_disqus_posts",
+  "collection_comments_ui_comments": "comments",
   "max_chunk_size": 100,
   "thread_links_regex": [
     "example.com\\/param1\\?"

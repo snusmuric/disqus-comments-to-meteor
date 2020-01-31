@@ -13,6 +13,7 @@
   "dependencies": {
     "moment": "^2.24.0",
     "mongodb": "^3.5.2",
+    "sanitize-html": "^1.21.1",
     "xml-stream": "^0.4.5",
     "yargs": "^15.1.0"
   }
